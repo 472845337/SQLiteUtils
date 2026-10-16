@@ -13,9 +13,6 @@ namespace SqliteUtils {
         /// <param name="password">数据库密码</param>
         /// <returns></returns>
         public static SqLiteHelper GetSqLiteHelper(string dbName, string password) {
-            // 兜底：确保内嵌的 SQLite 依赖已就绪（正常流程中 SqliteConfig 已经做过）
-            SqliteRuntime.EnsureLoaded();
-
             lock (SqLiteHelperDic) {
                 if (SqLiteHelperDic.ContainsKey(dbName)) {
                     // 存在该库，直接返回库工具类

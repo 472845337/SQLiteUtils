@@ -34,9 +34,6 @@ namespace SqliteUtils {
         private static SqLiteHelper SqlLiteHelper => SqLiteFactory.GetSqLiteHelper(SqliteConfig.DbFilePath, SqliteConfig.DbPassword);
 
         public TableService() {
-            // 兜底：确保内嵌的 SQLite 依赖已就绪（正常流程中 SqliteConfig 已经做过）
-            SqliteRuntime.EnsureLoaded();
-
             InitTable();
         }
 
