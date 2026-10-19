@@ -101,17 +101,38 @@ namespace SqliteUtils {
             return SqlLiteHelper.ExecuteNonQuery($"DELETE FROM {GetTableName()} where {KeyColumn}=@{KeyColumn}", new[] { new SQLiteParameter(KeyColumn, keyValue) });
         }
 
+        /// <summary>
+        /// 按查询对象删除数据（where 条件由查询对象中已赋值的属性决定，取值规则同 SelectList）
+        /// </summary>
+        /// <param name="queryModel">查询对象</param>
+        /// <returns>
+        /// 受影响的行数；查询对象未指定任何条件时返回 0。
+        /// （不指定条件时会拒绝执行，避免误删整表——清空整表请使用 Clear）
+        /// </returns>
+        public int Delete(T queryModel) {
+            string paramSql = string.Empty;
+            string whereSql = string.Empty;
+            List<SQLiteParameter> paramList = new List<SQLiteParameter>();
+            InitQuerySql(queryModel, ref paramSql, ref whereSql, ref paramList);
+            if (string.IsNullOrEmpty(whereSql)) {
+                return 0;
+            }
+            return SqlLiteHelper.Delete(GetTableName(), whereSql, paramList.ToArray());
+        }
+
         public void Vacuum() {
             SqlLiteHelper.Vacuum();
         }
 
         /// <summary>
-        /// 修改数据（where 条件使用实体的主键 KeyValue）
+        /// 修改数据（where 条件使用实体的主键 KeyValue）。
+        /// 调用前会先执行实体的 OnBeforeUpdate 回调，便于统一维护 update_time 等字段
         /// </summary>
         /// <param name="t"></param>
         /// <param name="hasNull">为 true 时，null 值的列也会参与更新</param>
         /// <returns></returns>
         public int Update(T t, bool hasNull = false) {
+            t?.OnBeforeUpdate();
             return SqlLiteHelper.Update(GetTableName(), GetParams(t, false, hasNull), $"{KeyColumn}=@{KeyColumn}", new[] { new SQLiteParameter(KeyColumn, t.KeyValue) });
         }
 
@@ -161,9 +182,8 @@ namespace SqliteUtils {
                         if (null == tableParam) {
                             continue;
                         }
-                        object obj = reader[tableParam.param];
-                        if (null != obj && DBNull.Value != obj) {
-                            info.SetValue(t, obj);
+                        if (TryConvertValue(reader[tableParam.param], info.PropertyType, out object converted)) {
+                            info.SetValue(t, converted);
                         }
                     }
 
@@ -195,7 +215,7 @@ namespace SqliteUtils {
                 if (null == tableParam) {
                     continue;
                 }
-                if (null != t && null != property.GetValue(t, null)) {
+                if (null != t && IsQueryValue(property, property.GetValue(t, null))) {
                     if (whereSb.Length > 0) {
                         whereSb.Append(" AND ");
                     }
@@ -224,6 +244,61 @@ namespace SqliteUtils {
         }
 
         /// <summary>
+        /// 判断属性值是否应作为查询条件。
+        /// 值为 null 表示「未设置」，不作为条件；
+        /// 非空值类型属性（如 int / bool）的默认值（0 / false）无法与「未设置」区分，
+        /// 也按未设置处理——否则 new T { 某字段 = x } 会把其它字段的默认值一并拼进 where。
+        /// 若确实需要按 0 / false 过滤，请把该属性声明为可空类型（int? / bool?）后显式赋值。
+        /// </summary>
+        private static bool IsQueryValue(PropertyInfo property, object value) {
+            if (null == value) {
+                return false;
+            }
+            Type type = property.PropertyType;
+            if (type.IsValueType && null == Nullable.GetUnderlyingType(type)
+                && value.Equals(Activator.CreateInstance(type))) {
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// 把数据库读出的值转换成实体属性的类型。
+        /// SQLite 是依据列的声明类型决定返回的 .NET 类型的（如 INTEGER→long、INT→int、BIT→bool），
+        /// 与实体属性的声明类型不一定一致，直接用 SetValue 赋值会抛异常，因此这里统一安全转换一次；
+        /// 转换失败时跳过该列（保持属性默认值），不影响整条记录的读取。
+        /// </summary>
+        private static bool TryConvertValue(object value, Type targetType, out object result) {
+            result = null;
+            if (null == value || DBNull.Value == value) {
+                return false;
+            }
+            Type type = Nullable.GetUnderlyingType(targetType) ?? targetType;
+            if (type.IsInstanceOfType(value)) {
+                result = value;
+                return true;
+            }
+            try {
+                if (typeof(bool) == type) {
+                    if (value is string text) {
+                        result = bool.TryParse(text, out bool parsed) ? parsed : text == "1";
+                    } else {
+                        result = Convert.ToInt64(value) != 0;
+                    }
+                    return true;
+                }
+                if (type.IsEnum) {
+                    result = Enum.ToObject(type, value);
+                    return true;
+                }
+                result = Convert.ChangeType(value, type);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// 创建表
         /// </summary>
         private void CreateTable() {
@@ -240,9 +315,12 @@ namespace SqliteUtils {
                     sb.Append(", ");
                 }
                 sb.Append(tableParam.param).Append(" ").Append(tableParam.type);
-                //if (tableParam.isKey) {
-                //    sb.Append(" PRIMARY KEY AUTOINCREMENT");
-                //}
+                // 自增主键：SQLite 规定 AUTOINCREMENT 只能用在「声明类型恰为 INTEGER」的主键列上，
+                // 因此这里只对 INTEGER 主键生效（自增数值 Id）；
+                // 用 VARCHAR 业务主键（如 XStart2.0 的 section）的项目保持原样，不加主键约束。
+                if (tableParam.isKey && "INTEGER".Equals(tableParam.type?.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                    sb.Append(" PRIMARY KEY AUTOINCREMENT");
+                }
             }
             insertSql.Append(sb).Append(")");
             SqlLiteHelper.ExecuteNonQuery(insertSql.ToString(), null);

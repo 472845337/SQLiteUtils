@@ -25,8 +25,13 @@ namespace SqliteUtils {
         public virtual object KeyValue => null;
 
         /// <summary>
-        /// 插入前的回调，子类可重写（例如自动生成主键 Guid）
+        /// 插入前的回调，子类可重写（例如自动生成主键 Guid、写入创建时间）
         /// </summary>
         public virtual void OnBeforeInsert() { }
+
+        /// <summary>
+        /// 更新前的回调，子类可重写（例如自动维护更新时间）
+        /// </summary>
+        public virtual void OnBeforeUpdate() { }
     }
 }
