@@ -9,6 +9,11 @@ namespace SqliteUtils {
         /// 是否主键（主键列不参与 update 的 set）
         /// </summary>
         public readonly bool isKey;
+
+        /// <summary>
+        /// 自增
+        /// </summary>
+        public readonly bool autoIncrement;
         /// <summary>
         /// 数据库列名
         /// </summary>
@@ -26,13 +31,17 @@ namespace SqliteUtils {
             this.param = param;
             this.type = type;
         }
-
         public TableParam(bool isKey, string param, string type) {
             this.isKey = isKey;
             this.param = param;
             this.type = type;
         }
-
+        public TableParam(bool isKey, string param, string type, bool autoIncrement = false) {
+            this.isKey = isKey;
+            this.param = param;
+            this.type = type;
+            this.autoIncrement = autoIncrement;
+        }
         public TableParam(string param, string type, QueryLikeType likeType) {
             this.param = param;
             this.type = type;

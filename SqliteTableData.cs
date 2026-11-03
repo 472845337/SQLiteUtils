@@ -8,7 +8,6 @@ namespace SqliteUtils {
     /// </summary>
     [Serializable]
     public abstract class SqliteTableData {
-
         /// <summary>
         /// 排序字段（仅作为查询条件使用，不映射到数据库列）
         /// </summary>
