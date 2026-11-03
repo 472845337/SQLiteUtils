@@ -120,8 +120,18 @@ namespace SqliteUtils {
             return SqlLiteHelper.Delete(GetTableName(), whereSql, paramList.ToArray());
         }
 
-        public void Vacuum() {
-            SqlLiteHelper.Vacuum();
+        /// <summary>
+        /// 超限执行SQLLite的Vacuum
+        /// </summary>
+        /// <param name="count">当前计数</param>
+        /// <param name="limit">计数最大值</param>
+        public void CountVacuum(ref int count, int delCount = 1, int limit = 0) {
+            if (limit <= 0 || count + delCount > limit) {
+                count = 0;
+                SqlLiteHelper.Vacuum();
+            } else {
+                count += delCount;
+            }
         }
 
         /// <summary>
